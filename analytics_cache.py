@@ -35,11 +35,21 @@ def save_request(path, req):
 
     filename = "log-{device_id}-{timestamp}".format(
         device_id=device_id, timestamp=timestamp)
-    # TODO Replace with a try/catch
-    output = json.dumps(dict(req.params.items()))
+
+    try:
+        output = json.dumps(dict(req.params.items()))
+    except TypeError as e:
+        logging.error(f"Error serializing request parameters to JSON: {e}")
+        return False
     
     log_path_initial = os.path.join(LOG_ROOT, app_dir, "received")
     os.makedirs(log_path_initial, exist_ok=True)
+    try:
+        os.makedirs(log_path_initial, exist_ok=True)
+    except OSError as e:
+        logging.error(f"Error creating directory {log_path_initial}: {e}")
+        return False
+
     log_path_initial = os.path.join(log_path_initial, filename)
     log_path = log_path_initial + ".json"
     count = 0
