@@ -23,8 +23,12 @@ def save_request(path, req):
     for key in JSON_VALUES:
         value = req.params.get(key)
         if value is not None:
-            # TODO Replace with a try/catch
-            req.params.replace(key, json.loads(value))
+            try:
+                # Try parsing the JSON value
+                req.params.replace(key, json.loads(value))
+            except json.JSONDecodeError as e:
+                logging.error(f"Error decoding JSON for key {key}: {e}")
+                return False
 
     device_id = req.params.get("device_id", default="UNKNOWN_DEVICE")
     timestamp = req.params.get("timestamp", default="UNKNOWN_TIMESTAMP")
@@ -44,8 +48,12 @@ def save_request(path, req):
         log_path = log_path_initial + "-" + str(count) + ".json"
         count += 1
 
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write(output)
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(output)
+    except IOError as e:
+        logging.error(f"Error writing to file {log_path}: {e}")
+        return False
     
     return True
 
