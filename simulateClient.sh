@@ -9,15 +9,9 @@ fi
 # Base URL provided as the first argument
 BASE_URL=$1
 
-# Get Unix timestamp (seconds since the epoch)
-SECONDS=$(date +%s)
-
-# Get current nanoseconds and extract milliseconds
-NANOSECONDS=$(date +%N)
-MILLISECONDS=$(echo $NANOSECONDS | cut -c1-3)
-
 # Combine seconds and milliseconds
-CURRENT_TIMESTAMP="${SECONDS}${MILLISECONDS}"
+# 'date is not used as macOS/BSD date doesn't support nanoseconds'
+CURRENT_TIMESTAMP=$(python3 -c 'from time import time; print(int(round(time() * 1000)))')
 
 # Get current hour of the day
 CURRENT_HOUR=$(date +%H)
