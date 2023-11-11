@@ -76,7 +76,7 @@ def save_request(path, req):
     if not app_dir:
         return False
 
-    logging.info("save_request: new request" + app_dir)
+    logging.info("save_request: new request: " + app_dir)
 
     if not process_json_values(req):
         return False
