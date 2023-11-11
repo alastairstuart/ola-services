@@ -4,6 +4,7 @@ from grpclib.const import Status
 from grpclib.exceptions import GRPCError
 from google.protobuf.empty_pb2 import Empty
 import asyncio
+import aiofiles # used so we don't block the main thread
 import hashlib
 import logging
 import os
@@ -30,7 +31,47 @@ DATA_ROOT_PATH = args.data_root
 METRICS_PATH = os.path.join(DATA_ROOT_PATH, "countly", "received")
 SOURCE_ID = args.source_id
 
+class FileManager:
+    def __init__(self, base_directory):
+        self.base_directory = base_directory
+
+    async def list_received_files(self):
+        path = self.base_directory
+        return [os.path.join(path, file) for file in os.listdir(path) if os.path.isfile(os.path.join(path, file))]
+
+    async def read_file(self, filename):
+        filepath = os.path.join(self.base_directory, filename)
+        async with aiofiles.open(filepath, 'rb') as file:
+            content = await file.read()
+        return content
+
+    async def delete_file(self, filename):
+        filepath = os.path.join(self.base_directory, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)  # os.remove is not async, but it's usually OK as it's a fast operation
+
+    async def file_info(self, filepath, hydrate_blob=False):
+        filename = os.path.basename(filepath)
+        fileid = None
+        blob = None
+
+        content = await self.read_file(filename)
+        # TODO Cache these somewhere sensible
+        fileid = hashlib.md5(content).hexdigest()
+
+        if hydrate_blob:
+            blob = content
+
+        return hitchhiker_pb2.File(
+            fileid=fileid,
+            filename=filename,
+            type="application/json",  # Adjust the type as needed
+            blob=blob
+        )
+
 class HitchhikerSource(hitchhiker_grpc.HitchhikerSourceBase):
+    def __init__(self, file_manager):
+        self.file_manager = file_manager
 
     async def GetSourceId(self, stream):
         logging.info(f"GetSourceId: Requested")
@@ -38,92 +79,58 @@ class HitchhikerSource(hitchhiker_grpc.HitchhikerSourceBase):
 
     async def GetDownloads(self, stream):
         request = await stream.recv_message()
-        base_directory = METRICS_PATH
 
         logging.info(f"GetDownloads: Requested for destination \"{request.destinationId}\" by client \"{request.clientId}\"")
 
         try:
-            # Function to list and get file info
-            def list_received_files(metrics_path):
-                received_files = [os.path.join(metrics_path, file) for file in os.listdir(metrics_path) if os.path.isfile(os.path.join(metrics_path, file))]
-                return received_files
-
-            def file_info(filepath):
-                filename = os.path.basename(filepath)
-                with open(filepath, 'rb') as file:
-                    content = file.read()
-                    fileid = hashlib.md5(content).hexdigest()
-                    return hitchhiker_pb2.File(fileid=fileid, filename=filename, type="application/json")
-
-            files = [file_info(filepath) for filepath in list_received_files(base_directory)]
-
-            # Send the list of files
+            received_files = await self.file_manager.list_received_files()
+            files = [await self.file_manager.file_info(filepath, hydrate_blob=False) for filepath in received_files]
             await stream.send_message(hitchhiker_pb2.FileList(files=files))
-
         except FileNotFoundError:
-            logging.error(f"GetDownloads: Directory not found: {METRICS_PATH}")
-            # Optionally, send an error message to the client or an empty list
-            raise GRPCError(Status.NOT_FOUND, f"Downloads not found")
-
+            logging.error(f"GetDownloads: Directory not found")
+            raise GRPCError(Status.NOT_FOUND, "Downloads not found")
         except PermissionError:
-            logging.error("GetDownloads: Permission denied.")
-            raise GRPCError(Status.PERMISSION_DENIED, "Permission denied.")
-
+            logging.error("GetDownloads: Permission denied")
+            raise GRPCError(Status.PERMISSION_DENIED, "Permission denied")
         except Exception as e:
             logging.error(f"GetDownloads: Unexpected error: {str(e)}")
-            raise GRPCError(Status.INTERNAL, f"Unexpected error")
+            raise GRPCError(Status.INTERNAL, "Unexpected error")
 
     async def DownloadFile(self, stream):
         request = await stream.recv_message()
-        base_directory = METRICS_PATH
 
         for file_info in request.files:
             try:
-                filepath = os.path.join(base_directory, file_info.filename)
-                
-                logging.info(f"DownloadFile: Requested: \"{file_info.filename}\" by client \"{request.clientId}\"")
-                
-                with open(filepath, 'rb') as file:
-                    content = file.read()
-                    fileid = hashlib.md5(content).hexdigest()
+                # Send the file back to the client
+                await stream.send_message(await self.file_manager.file_info(file_info.filename, hydrate_blob=True))
 
-                    await stream.send_message(hitchhiker_pb2.File(
-                        fileid=fileid,
-                        filename=file_info.filename,
-                        type="application/json",
-                        blob=content
-                    ))
             except FileNotFoundError:
-                logging.warning(f"DownloadFile: File not found")
-                raise GRPCError(Status.NOT_FOUND, f"File not found")
-            except Exception as e:
-                # For other exceptions, abort and send an error message
-                logging.error(f"DownloadFile: Unexpected Error: {str(e)}")
-                raise GRPCError(Status.INTERNAL, f"Unexpected error")
+                logging.warning(f"DownloadFile: File not found: {file_info.filename}")
+                raise GRPCError(Status.NOT_FOUND, f"File not found: {file_info.filename}")
 
     async def MarkDelivered(self, stream):
         request = await stream.recv_message()
-        base_directory = METRICS_PATH
+
+        # TODO As there's a destructive action here, do some sanity checking on the file path
 
         for file_info in request.files:
-            filepath = os.path.join(base_directory, file_info.filename)
-            
-            logging.info(f"MarkDelivered: Requested: \"{file_info.filename}\" to destination \"{request.destinationId}\" by client \"{request.clientId}\"")
-
-            # Delete the file
             try:
-                os.remove(filepath)
+                await self.file_manager.delete_file(file_info.filename)
                 logging.info(f"MarkDelivered: File deleted: \"{file_info.filename}\"")
+
             except FileNotFoundError:
-                logging.warning(f"MarkDelivered: File to delete not found: \"{filepath}\"")
+                logging.warning(f"MarkDelivered: File to delete not found: \"{file_info.filename}\"")
+                raise GRPCError(Status.NOT_FOUND, f"Downloads not found")
+
             except Exception as e:
                 logging.error(f"MarkDelivered: Error deleting file \"{file_info.filename}\": {str(e)}")
+                raise GRPCError(Status.INTERNAL, "Internal server error")
 
-        # Acknowledge the delivery
         await stream.send_message(Empty())
 
 async def main():
-    server = Server([HitchhikerSource()])
+    file_manager = FileManager(METRICS_PATH)
+    server = Server([HitchhikerSource(file_manager)])
     await server.start('127.0.0.1', 50051)
     logging.info("HitchhikerSource service running...")
     await server.wait_closed()
