@@ -1,0 +1,48 @@
+// hitchhiker.proto
+
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package hitchhiker;
+
+// The file structure to be used for FileList and File messages
+message File {
+  string fileid = 1; // MD5 sum
+  string filename = 2;
+  string type = 3;
+  bytes blob = 4; // Optional
+}
+
+// Service definition
+service HitchhikerSource {
+  rpc GetSourceId(google.protobuf.Empty) returns (SourceId);
+  rpc GetDownloads(GetDownloadsRequest) returns (FileList);
+  rpc DownloadFile(DownloadFileRequest) returns (stream File);
+  rpc MarkDelivered(MarkDeliveredRequest) returns (google.protobuf.Empty);
+}
+
+// Request and Response messages
+message SourceId {
+  string id = 1;
+}
+
+message GetDownloadsRequest {
+  string clientId = 1;
+  string destinationId = 2;
+}
+
+message FileList {
+  repeated File files = 1;
+}
+
+message DownloadFileRequest {
+  string clientId = 1;
+  repeated File files = 2;
+}
+
+message MarkDeliveredRequest {
+  string clientId = 1;
+  string destinationId = 2;
+  repeated File files = 3;
+}
