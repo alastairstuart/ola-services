@@ -24,57 +24,78 @@ app = bottle.default_app()
 #TODO: gRPC endpoint to retrieve logs
 #TODO: Unit tests
 
-def save_request(path, req):
-    app_dir = PATH_MAP.get(path)
-    if not app_dir:
-        return False
-    logging.error("Saving new request: " + app_dir)
+def process_json_values(req):
+    """
+    Process and validate JSON values in the request.
+    """
     for key in JSON_VALUES:
         value = req.params.get(key)
         if value is not None:
             try:
-                # Try parsing the JSON value
                 req.params.replace(key, json.loads(value))
             except json.JSONDecodeError as e:
                 logging.error(f"Error decoding JSON for key {key}: {e}")
                 return False
+    return True
 
+def generate_filename(req):
+    """
+    Generate a filename for the log based on device_id and timestamp.
+    """
     device_id = req.params.get("device_id", default="UNKNOWN_DEVICE")
     timestamp = req.params.get("timestamp", default="UNKNOWN_TIMESTAMP")
-
-    filename = "log-{device_id}-{timestamp}".format(
+    return "log-{device_id}-{timestamp}.json".format(
         device_id=device_id, timestamp=timestamp)
+
+def create_log_directory(app_dir):
+    """
+    Create the directory for storing logs.
+    """
+    log_path_initial = os.path.join(app_dir, "received")
+    try:
+        os.makedirs(log_path_initial, exist_ok=True)
+        return log_path_initial
+    except OSError as e:
+        logging.error(f"Error creating directory {log_path_initial}: {e}")
+        return None
+
+def write_to_log_file(log_path, output):
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(output)
+        return True
+    except IOError as e:
+        logging.error(f"Error writing to file {log_path}: {e}")
+        return False
+
+def save_request(path, req):
+    app_dir = PATH_MAP.get(path)
+    if not app_dir:
+        return False
+
+    logging.error("Saving new request: " + app_dir)
+
+    if not process_json_values(req):
+        return False
+
+    filename = generate_filename(req)
+    log_path_initial = create_log_directory(os.path.join(DATA_ROOT_PATH, app_dir))
+    if log_path_initial is None:
+        return False
+
+    log_path = os.path.join(log_path_initial, filename)
+    count = 0
+    while os.path.exists(log_path):
+        log_path = log_path_initial + "-" + str(count) + ".json"
+        count += 1
 
     try:
         output = json.dumps(dict(req.params.items()))
     except TypeError as e:
         logging.error(f"Error serializing request parameters to JSON: {e}")
         return False
-    
-    log_path_initial = os.path.join(DATA_ROOT_PATH, app_dir, "received")
-    os.makedirs(log_path_initial, exist_ok=True)
-    try:
-        os.makedirs(log_path_initial, exist_ok=True)
-    except OSError as e:
-        logging.error(f"Error creating directory {log_path_initial}: {e}")
-        return False
 
-    log_path_initial = os.path.join(log_path_initial, filename)
-    log_path = log_path_initial + ".json"
-    count = 0
-    
-    while os.path.exists(log_path):
-        log_path = log_path_initial + "-" + str(count) + ".json"
-        count += 1
-
-    try:
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write(output)
-    except IOError as e:
-        logging.error(f"Error writing to file {log_path}: {e}")
-        return False
-    
-    return True
+    return write_to_log_file(log_path, output)
 
 # Remote config not supported
 @app.route('/o/sdk', method='GET')
