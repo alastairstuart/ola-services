@@ -7,7 +7,7 @@ import os
 
 # Set up the command line argument parser
 parser = argparse.ArgumentParser(description="Start the web server with specified data directory.")
-default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "data"))
+default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "../data"))
 
 parser.add_argument('--data-root', type=str, default=default_log_root,
                     help='The directory path for log root (default: %(default)s)')
