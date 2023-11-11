@@ -5,6 +5,9 @@ import json
 import logging
 import os
 
+# Setup basic logging
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+
 # Set up the command line argument parser
 parser = argparse.ArgumentParser(description="Start the web server with specified data directory.")
 default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "../data"))
@@ -34,7 +37,7 @@ def process_json_values(req):
             try:
                 req.params.replace(key, json.loads(value))
             except json.JSONDecodeError as e:
-                logging.error(f"Error decoding JSON for key {key}: {e}")
+                logging.error(f"process_json_values: Error decoding JSON for key {key}: {e}")
                 return False
     return True
 
@@ -56,7 +59,7 @@ def create_log_directory(app_dir):
         os.makedirs(log_path_initial, exist_ok=True)
         return log_path_initial
     except OSError as e:
-        logging.error(f"Error creating directory {log_path_initial}: {e}")
+        logging.error(f"create_log_directory: Error creating directory {log_path_initial}: {e}")
         return None
 
 def write_to_log_file(log_path, output):
@@ -65,7 +68,7 @@ def write_to_log_file(log_path, output):
             f.write(output)
         return True
     except IOError as e:
-        logging.error(f"Error writing to file {log_path}: {e}")
+        logging.error(f"write_to_log_file: Error writing to file {log_path}: {e}")
         return False
 
 def save_request(path, req):
@@ -73,7 +76,7 @@ def save_request(path, req):
     if not app_dir:
         return False
 
-    logging.error("Saving new request: " + app_dir)
+    logging.info("save_request: new request" + app_dir)
 
     if not process_json_values(req):
         return False
