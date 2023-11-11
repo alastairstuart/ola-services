@@ -1,17 +1,26 @@
+import argparse
 import bottle
 from bottle import request, route, run, template, HTTPError
 import json
 import logging
 import os
 
-LOG_ROOT = os.path.join(os.path.dirname(__file__), "data")
+# Set up the command line argument parser
+parser = argparse.ArgumentParser(description="Start the web server with specified data directory.")
+default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "data"))
+
+parser.add_argument('--data-root', type=str, default=default_log_root,
+                    help='The directory path for log root (default: %(default)s)')
+args = parser.parse_args()
+
+
+DATA_ROOT_PATH = args.data_root
 PATH_MAP = {"i": "countly"}
 JSON_VALUES = ["events"]
 
 app = bottle.default_app()
 
 #TODO: Periodically check disk storage, rotate files to another dir, then delete
-#TODO: Environment or cmdline arguments for LOG_ROOT
 #TODO: gRPC endpoint to retrieve logs
 #TODO: Unit tests
 
@@ -42,7 +51,7 @@ def save_request(path, req):
         logging.error(f"Error serializing request parameters to JSON: {e}")
         return False
     
-    log_path_initial = os.path.join(LOG_ROOT, app_dir, "received")
+    log_path_initial = os.path.join(DATA_ROOT_PATH, app_dir, "received")
     os.makedirs(log_path_initial, exist_ok=True)
     try:
         os.makedirs(log_path_initial, exist_ok=True)
