@@ -1,2 +1,3 @@
-grpclib[protobuf]
-asyncoio
+grpclib
+protobuf
+aiofiles
