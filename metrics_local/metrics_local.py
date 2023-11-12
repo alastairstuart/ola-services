@@ -26,9 +26,7 @@ app = bottle.default_app()
 #TODO: Periodically check disk storage, rotate files to another dir, then delete
 
 def process_json_values(req):
-    """
-    Process and validate JSON values in the request.
-    """
+    # Process and validate JSON values in the request.
     for key in JSON_VALUES:
         value = req.params.get(key)
         if value is not None:
@@ -40,18 +38,15 @@ def process_json_values(req):
     return True
 
 def generate_filename(req):
-    """
-    Generate a filename for the log based on device_id and timestamp.
-    """
+    # Generate a filename for the log based on device_id and timestamp in the request
     device_id = req.params.get("device_id", default="UNKNOWN_DEVICE")
     timestamp = req.params.get("timestamp", default="UNKNOWN_TIMESTAMP")
     return "log-{device_id}-{timestamp}.json".format(
         device_id=device_id, timestamp=timestamp)
 
 def create_log_directory(app_dir):
-    """
-    Create the directory for storing logs.
-    """
+    # Create the directory for storing logs.
+    # We stick with the app_dir/received convention for now
     log_path_initial = os.path.join(app_dir, "received")
     try:
         os.makedirs(log_path_initial, exist_ok=True)
@@ -61,6 +56,9 @@ def create_log_directory(app_dir):
         return None
 
 def write_to_log_file(log_path, output):
+    # Writes a file with the contents of 'output'
+    # TODO There may be a race condition with HitchHikerSource reading from
+    # incomplete files - consider using temporary file paths and moving to the right place
     try:
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(output)
@@ -70,6 +68,7 @@ def write_to_log_file(log_path, output):
         return False
 
 def save_request(path, req):
+    # Saves the incoming request from the route path to the data cache
     app_dir = PATH_MAP.get(path)
     if not app_dir:
         return False
@@ -98,7 +97,9 @@ def save_request(path, req):
 
     return write_to_log_file(log_path, output)
 
-# Remote config not supported
+# Bottle HTTP route configs
+
+# Serves as a health check for service - does not configure.
 @app.route('/o/sdk', method='GET')
 def index():
     return json.dumps({"result": "success"})
