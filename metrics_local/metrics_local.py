@@ -1,29 +1,39 @@
 import argparse
+import threading
+import time
 import bottle
 from bottle import request, route, run, template, HTTPError
 import json
 import logging
 import os
+import sys
+import stat
 
 # Setup basic logging
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 # Set up the command line argument parser
 parser = argparse.ArgumentParser(description="Start the web server with specified data directory.")
-default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "../data"))
 
+default_log_root = os.environ.get('OLA_ML_DATA_ROOT', os.path.join(os.path.dirname(__file__), "../data"))
 parser.add_argument('--data-root', type=str, default=default_log_root,
-                    help='The directory path for log root (default: %(default)s)')
+                    help='The directory path for data cache (default: %(default)s)')
+
+default_cache_size = os.environ.get('OLA_ML_DATA_CACHE_SIZE', 10)
+parser.add_argument('--data-cache-size', type=int, default=default_cache_size,
+                    help='Keep the data cache under this size in MB (default: %(default)s MB)')
+
+parser.add_argument('--purge-data-cache', action='store_true', help='Purge old files from the data cache')
+
 args = parser.parse_args()
 
 
 DATA_ROOT_PATH = args.data_root
+CACHE_SIZE_MB = args.data_cache_size
 PATH_MAP = {"i": "countly"}
 JSON_VALUES = ["events"]
 
 app = bottle.default_app()
-
-#TODO: Periodically check disk storage, rotate files to another dir, then delete
 
 def process_json_values(req):
     # Process and validate JSON values in the request.
@@ -97,6 +107,38 @@ def save_request(path, req):
 
     return write_to_log_file(log_path, output)
 
+def purge_cache(directory, cache_size_kb):
+    cache_size = cache_size_kb * 1024 # needs to be in bytes
+
+    # Recursively get all files in the directory and subdirectories
+    files = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        files.extend([os.path.join(dirpath, file) for file in filenames])
+
+    # Calculate the total size
+    # TODO We should use the actual size on disk here, not the file's size
+    # This is because the files are often tiny.
+    total_size = sum(os.path.getsize(f) for f in files)
+
+    # Check if total size is greater than cache_size
+    if total_size > cache_size:
+        logging.info(f"purge_cache: cache total size is {total_size} of {cache_size} bytes, ")
+        # Sort files by last modified date
+        files.sort(key=lambda x: os.path.getmtime(x))
+
+        # Remove files until the total size is less than cache_size
+        while files and total_size > cache_size:
+            oldest_file = files.pop(0)
+            total_size -= os.path.getsize(oldest_file)
+            logging.info(f"purge_cache: Removing \"{oldest_file}\"")
+            os.remove(oldest_file)
+
+def start_purge_cache_scheduler():
+    seconds = 5 * 60 # TODO Make configurable
+    while True:
+        purge_cache(DATA_ROOT_PATH, CACHE_SIZE_MB * 1024)
+        time.sleep(seconds)
+
 # Bottle HTTP route configs
 
 # Serves as a health check for service - does not configure.
@@ -117,4 +159,13 @@ def index(path=None):
     raise HTTPError(404, "Not found")
 
 if __name__ == "__main__":
+    # Do a manual purge cache purge and exit
+    if (args.purge_data_cache):
+        purge_cache(DATA_ROOT_PATH, CACHE_SIZE_MB * 1024)
+        sys.exit()
+    # Start the scheduler thread
+    scheduler_thread = threading.Thread(target=start_purge_cache_scheduler)
+    scheduler_thread.daemon = True
+    scheduler_thread.start()
+    # Start the bottle app
     app.run()
