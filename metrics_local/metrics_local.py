@@ -24,8 +24,6 @@ JSON_VALUES = ["events"]
 app = bottle.default_app()
 
 #TODO: Periodically check disk storage, rotate files to another dir, then delete
-#TODO: gRPC endpoint to retrieve logs
-#TODO: Unit tests
 
 def process_json_values(req):
     """
