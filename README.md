@@ -5,13 +5,14 @@ This repository contains two services that are part of the Open Learning Archite
 * metrics_local - recieves analytics logs from client devices and caches them.
 * hitchhiker_source - a gRPC service for sharing the cached updates from metrics local with upstream ETL services.
 
-These can be run either in a local dev environment or on an OpenWRT device or virtual machine
+These can be run either in a local dev environment or on an OpenWRT device/virtual machine.
 
 ## Set up on an OpenWRT VM
 
 On a fresh OpenWRT VM running on 10.0.2.2, install some prerequisites:
 
-`opkg install curl
+```
+opkg install curl
 opkg install openssh-sftp-server # optional if you have another way of uploading the services
 opkg install python3
 opkg install python3-pip
@@ -24,28 +25,35 @@ pip install -r requirements.txt
 
 cd /root/ola-services/hitchhiker_source
 pip install -r requirements.txt
-`
+```
 
 ## Demoing
 
 On OpenWRT (or your local dev machine), first we start the services in seperate terminals
 
-`cd metrics_local
+```
+cd metrics_local
 python3 metrics_local.py --data-root ../data
 
 cd ../hitchhiker_source
 python3 hitchhiker_source.py --data-root ../data
-`
+```
+
 
 Then, on our host machine we can start sending data to metrics local (use 127.0.0.1 if not running on an OpenWRT VM)
 
-`cd metrics_local
+```
+cd metrics_local
 for i in {1..5}; do ./simulateClient.sh http://10.0.2.2:8080; done
-`
+```
+
+Alternatively, you could run actual clients pointing at the same URL. Unfortunately the provided metrics_local/countly_test.apk requires all network connectivity to be over HTTPs with a signed certificate.
+
 
 We can then test the gRPC service's functions e.g. using grpcurl, again from the host machine
 
-`$ brew install grpcurl
+```
+$ brew install grpcurl
 
 $ cd hitchhiker_source
 $ grpcurl -plaintext -proto hitchhiker.proto 10.0.2.2:50051 hitchhiker.HitchhikerSource/GetSourceId
@@ -121,26 +129,29 @@ $ grpcurl -plaintext -proto hitchhiker.proto -d '{
   ]
 }' 10.0.2.2:50051 hitchhiker.HitchhikerSource/MarkDelivered
 {}
-
-`
+```
 
 ## Running Unit Tests
 
 Both services are unit tested with PyTest. To run them, in both services, install the developer requirements and run pytest:
 
-`pip install -r requirements_dev.txt
+```
+pip install -r requirements_dev.txt
 pytest
-`
+```
 
 ## Changing the gRPC protocol
 
 If making any changes to hitchhiker.proto, you'll need the following to rebuild the python definitions:
 
-`brew install protobuf
+```
+brew install protobuf
 pip3 install "grpclib[protobuf]"
 pip3 install grpcio-tools
-`
+```
 
 Then rebuild with:
 
-`python3 -m grpc_tools.protoc -I. --python_out=. --grpclib_python_out=. hitchhiker.proto`
+```
+python3 -m grpc_tools.protoc -I. --python_out=. --grpclib_python_out=. hitchhiker.proto
+```
