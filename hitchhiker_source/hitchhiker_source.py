@@ -131,7 +131,7 @@ class HitchhikerSource(hitchhiker_grpc.HitchhikerSourceBase):
 async def main():
     file_manager = FileManager(METRICS_PATH)
     server = Server([HitchhikerSource(file_manager)])
-    await server.start('127.0.0.1', 50051)
+    await server.start('0.0.0.0', 50051)
     logging.info("HitchhikerSource service running...")
     await server.wait_closed()
 
