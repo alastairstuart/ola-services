@@ -168,4 +168,4 @@ if __name__ == "__main__":
     scheduler_thread.daemon = True
     scheduler_thread.start()
     # Start the bottle app
-    app.run()
+    app.run(host='0.0.0.0')
