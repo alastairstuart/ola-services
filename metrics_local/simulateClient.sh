@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Check if URL is provided
 if [ "$#" -ne 1 ]; then
@@ -28,3 +28,4 @@ USER_AGENT="Dalvik/2.1.0 (Linux; U; Android 14; sdk_gphone64_arm64 Build/UE1A.23
 
 # Perform GET request
 curl -X GET "${BASE_URL}${PATH_QUERY}" -H "User-Agent: ${USER_AGENT}"
+echo
